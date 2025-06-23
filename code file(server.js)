@@ -1,0 +1,63 @@
+// server.js
+const express = require('express')
+const { nanoid } = require('nanoid')
+const app = express()
+
+app.use(express.json()) // for JSON body parsing
+
+const PORT = 3000
+const urlDatabase = {}
+
+// POST /shorturls — Creates a new shortened URL
+app.post('/shorturls', (req, res) => {
+  const { url, validity = 30, shortcode } = req.body
+
+  // Validate URL
+  if (!url) {
+    return res.status(400).json({ error: 'Missing "url"' })
+  }
+  try {
+    new URL(url) // throws if invalid
+  } catch {
+    return res.status(400).json({ error: 'Invalid URL' })
+  }
+
+  // Make a unique short code
+  let code = shortcode
+  if (!code || urlDatabase[code]) {
+    code = nanoid(6)
+  }
+
+  // Compute expiry time
+  const expiryDate = new Date(Date.now() + validity * 60 * 1000)
+
+  // Save to "database"
+  urlDatabase[code] = { url, expiry: expiryDate }
+
+  // Return response
+  res.status(201).json({
+    shortLink: `http://localhost:${PORT}/${code}`,
+    expiry: expiryDate.toISOString(),
+  })
+})
+
+// GET /:shortcode — Redirect to original URL
+app.get('/:shortcode', (req, res) => {
+  const code = req.params.shortcode
+  const record = urlDatabase[code]
+
+  if (!record) {
+    return res.status(404).send('Not found')
+  }
+  if (record.expiry < new Date()) {
+    return res.status(410).send('Link expired')
+  }
+
+  // Redirect
+  res.redirect(record.url)
+})
+
+app.listen(PORT, () => {
+  console.log(`Server listening on http://localhost:${PORT}`)
+})
+
